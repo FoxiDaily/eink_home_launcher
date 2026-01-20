@@ -1,2 +1,4 @@
-# eink_home_launcher
-A  launcher for eink devices.
+# EinkHome
+### 为墨水屏设计。
+
+本项目纯AI生成。还在开发中......

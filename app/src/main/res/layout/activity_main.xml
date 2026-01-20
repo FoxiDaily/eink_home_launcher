@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFFFF"
+    tools:context=".MainActivity">
+
+    <com.fxdaily.einkhome.DragLayer
+        android:id="@+id/drag_layer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 顶部卸载区域 -->
+        <LinearLayout
+            android:id="@+id/delete_zone"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:background="#FF4444"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@android:drawable/ic_menu_delete"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="拖动此处卸载"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- 主屏幕 ViewPager2：支持左右滑动 -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/view_pager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- 页面指示器 -->
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/page_indicator"
+            android:layout_width="match_parent"
+            android:layout_height="30dp"
+            app:tabBackground="@drawable/page_indicator_dot"
+            app:tabGravity="center"
+            app:tabIndicatorHeight="0dp"
+            app:tabMaxWidth="12dp"
+            app:tabRippleColor="@android:color/transparent" />
+
+        <!-- Hotseat (底部固定栏) -->
+        <LinearLayout
+            android:id="@+id/hotseat"
+            android:layout_width="match_parent"
+            android:layout_height="90dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:background="#F5F5F5"
+            android:elevation="4dp"
+            android:padding="8dp">
+        </LinearLayout>
+
+    </com.fxdaily.einkhome.DragLayer>
+
+</FrameLayout>
