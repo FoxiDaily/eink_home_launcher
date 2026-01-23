@@ -1,74 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.fxdaily.einkhome.DragLayer xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/drag_layer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FFFFFF"
     tools:context=".MainActivity">
 
-    <com.fxdaily.einkhome.DragLayer
-        android:id="@+id/drag_layer"
+    <!-- 顶部卸载区域 -->
+    <LinearLayout
+        android:id="@+id/delete_zone"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="60dp"
+        android:background="#FF4444"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:visibility="gone">
 
-        <!-- 顶部卸载区域 -->
-        <LinearLayout
-            android:id="@+id/delete_zone"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:background="#FF4444"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:visibility="gone"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp">
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@android:drawable/ic_menu_delete"
+            app:tint="#FFFFFF" />
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@android:drawable/ic_menu_delete"
-                app:tint="#FFFFFF" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="拖动此处卸载"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
-                android:text="拖动此处卸载"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+    <!-- 主屏幕 ViewPager2 (Workspace) -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/view_pager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginBottom="179dp" />
 
-        <!-- 主屏幕 ViewPager2：支持左右滑动 -->
-        <androidx.viewpager2.widget.ViewPager2
-            android:id="@+id/view_pager"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+    <!-- 页面指示器 -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/page_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="29dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="150dp"
+        android:paddingBottom="4dp"
+        android:background="@android:color/transparent"
+        app:tabGravity="center"
+        app:tabIndicatorHeight="0dp"
+        app:tabRippleColor="@android:color/transparent"
+        app:tabPaddingStart="0dp"
+        app:tabPaddingEnd="0dp"
+        app:tabMinWidth="18dp"
+        app:tabMaxWidth="18dp" />
 
-        <!-- 页面指示器 -->
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/page_indicator"
-            android:layout_width="match_parent"
-            android:layout_height="30dp"
-            app:tabBackground="@drawable/page_indicator_dot"
-            app:tabGravity="center"
-            app:tabIndicatorHeight="0dp"
-            app:tabMaxWidth="12dp"
-            app:tabRippleColor="@android:color/transparent" />
+    <!-- 底部区域容器 -->
+    <LinearLayout
+        android:id="@+id/bottom_container"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:background="#FFFFFF">
 
         <!-- Hotseat (底部固定栏) -->
-        <LinearLayout
+        <com.fxdaily.einkhome.CellLayout
             android:id="@+id/hotseat"
             android:layout_width="match_parent"
-            android:layout_height="90dp"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:background="#F5F5F5"
-            android:elevation="4dp"
-            android:padding="8dp">
-        </LinearLayout>
+            android:layout_height="90dp" />
 
-    </com.fxdaily.einkhome.DragLayer>
+        <!-- 搜索栏 -->
+        <FrameLayout
+            android:id="@+id/search_bar_container"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="8dp">
 
-</FrameLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/search_bar_background"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:drawableStart="@drawable/ic_search"
+                android:drawablePadding="8dp"
+                android:drawableTint="#000000"
+                android:text="搜索应用..."
+                android:textColor="#000000"
+                android:textSize="14sp" />
+        </FrameLayout>
+
+    </LinearLayout>
+
+</com.fxdaily.einkhome.DragLayer>

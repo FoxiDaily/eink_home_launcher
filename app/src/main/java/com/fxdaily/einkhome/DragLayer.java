@@ -79,7 +79,7 @@ public class DragLayer extends FrameLayout {
         int pB = getPaddingBottom();
 
         View deleteZone = findViewById(R.id.delete_zone);
-        View hotseat = findViewById(R.id.hotseat);
+        View bottomContainer = findViewById(R.id.bottom_container);
         View viewPager = findViewById(R.id.view_pager);
         View indicator = findViewById(R.id.page_indicator);
 
@@ -91,24 +91,27 @@ public class DragLayer extends FrameLayout {
             );
         }
 
-        if (hotseat != null) {
-            hotseat.measure(
+        int bottomH = 0;
+        if (bottomContainer != null) {
+            // 注意：测量时包含底部的 padding (避让区域)
+            bottomContainer.measure(
                 MeasureSpec.makeMeasureSpec(width - pL - pR, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(hotseat.getMeasuredHeight(), MeasureSpec.EXACTLY)
+                MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(bottomContainer.getLayoutParams().height) + bottomContainer.getPaddingBottom(), MeasureSpec.EXACTLY)
             );
+            bottomH = bottomContainer.getMeasuredHeight();
         }
 
+        int iH = 0;
         if (indicator != null) {
             indicator.measure(
-                MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(indicator.getMeasuredHeight(), MeasureSpec.EXACTLY)
+                MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST),
+                MeasureSpec.makeMeasureSpec((int)(29 * getResources().getDisplayMetrics().density), MeasureSpec.EXACTLY)
             );
+            iH = indicator.getMeasuredHeight();
         }
 
         if (viewPager != null) {
-            int hH = (hotseat != null) ? hotseat.getMeasuredHeight() : 0;
-            int iH = (indicator != null) ? indicator.getMeasuredHeight() : 0;
-            int availableHeight = height - pT - pB - hH - iH;
+            int availableHeight = height - pT - pB - bottomH - iH;
             viewPager.measure(
                 MeasureSpec.makeMeasureSpec(width - pL - pR, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(availableHeight, MeasureSpec.EXACTLY)
@@ -127,27 +130,30 @@ public class DragLayer extends FrameLayout {
         int height = bottom - top;
 
         View deleteZone = findViewById(R.id.delete_zone);
-        View hotseat = findViewById(R.id.hotseat);
+        View bottomContainer = findViewById(R.id.bottom_container);
         View viewPager = findViewById(R.id.view_pager);
         View indicator = findViewById(R.id.page_indicator);
 
-        // 1. Hotseat 在底部
-        int hotseatHeight = 0;
-        if (hotseat != null) {
-            hotseatHeight = hotseat.getMeasuredHeight();
-            hotseat.layout(pL, height - pB - hotseatHeight, pL + hotseat.getMeasuredWidth(), height - pB);
+        // 1. BottomContainer 直接贴底（其内部的 padding 处理避让）
+        int bottomHeight = 0;
+        if (bottomContainer != null) {
+            bottomHeight = bottomContainer.getMeasuredHeight();
+            bottomContainer.layout(pL, height - bottomHeight, pL + bottomContainer.getMeasuredWidth(), height);
         }
 
-        // 2. 指示器在 Hotseat 之上
+        // 2. 指示器在 BottomContainer 之上
         int indicatorHeight = 0;
         if (indicator != null) {
             indicatorHeight = indicator.getMeasuredHeight();
-            indicator.layout(0, height - pB - hotseatHeight - indicatorHeight, width, height - pB - hotseatHeight);
+            indicator.layout((width - indicator.getMeasuredWidth()) / 2, 
+                           height - bottomHeight - indicatorHeight, 
+                           (width + indicator.getMeasuredWidth()) / 2, 
+                           height - bottomHeight);
         }
 
         // 3. ViewPager 填满剩余空间
         if (viewPager != null) {
-            viewPager.layout(pL, pT, pL + viewPager.getMeasuredWidth(), height - pB - hotseatHeight - indicatorHeight);
+            viewPager.layout(pL, pT, pL + viewPager.getMeasuredWidth(), height - bottomHeight - indicatorHeight);
         }
 
         // 4. DeleteZone 置顶
@@ -159,8 +165,10 @@ public class DragLayer extends FrameLayout {
 
         for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
-            if (child == mDragImageView || child == hotseat || child == viewPager || child == deleteZone || child == indicator) continue;
-            child.layout(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+            if (child == mDragImageView || child == bottomContainer || child == viewPager || child == deleteZone || child == indicator) continue;
+            if (child.getVisibility() != GONE) {
+                child.layout(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+            }
         }
     }
 }

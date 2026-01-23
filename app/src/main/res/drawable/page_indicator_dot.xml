@@ -1,15 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_selected="true">
-        <shape android:shape="oval">
-            <solid android:color="#333333" />
-            <size android:width="8dp" android:height="8dp" />
-        </shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:left="6dp"
+        android:right="6dp"
+        android:gravity="center">
+        <selector>
+            <!-- 当前页：黑色实心圆点 -->
+            <item android:state_selected="true">
+                <shape android:shape="oval">
+                    <solid android:color="#000000" />
+                    <size
+                        android:width="8dp"
+                        android:height="8dp" />
+                </shape>
+            </item>
+            <!-- 非当前页：黑色描边空心圆点 -->
+            <item>
+                <shape android:shape="oval">
+                    <solid android:color="@android:color/transparent" />
+                    <stroke
+                        android:width="2dp"
+                        android:color="#000000" />
+                    <size
+                        android:width="8dp"
+                        android:height="8dp" />
+                </shape>
+            </item>
+        </selector>
     </item>
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="#CCCCCC" />
-            <size android:width="8dp" android:height="8dp" />
-        </shape>
-    </item>
-</selector>
+</layer-list>

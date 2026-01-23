@@ -1,330 +1,590 @@
 package com.fxdaily.einkhome;
 
 import android.content.BroadcastReceiver;
-import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.net.Uri;
+import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.icu.text.AlphabeticIndex;
+import android.os.Build;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.DisplayMetrics;
-import android.view.DragEvent;
+import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.GridLayout;
+import android.view.Window;
+import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.content.res.ResourcesCompat;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.tabs.TabLayoutMediator;
 
+import java.text.Collator;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
+    static class AppModel {
+        String pkg;
+        CharSequence label;
+        Drawable icon;
+        boolean isNull = false;
+
+        static AppModel createNull() {
+            AppModel m = new AppModel();
+            m.pkg = "null";
+            m.isNull = true;
+            m.label = "";
+            return m;
+        }
+    }
+
     private ViewPager2 viewPager;
     private TabLayout pageIndicator;
-    private LinearLayout hotseat;
-    private View deleteZone;
-    
+    private CellLayout hotseat;
+
     private static final String PREFS_NAME = "LauncherPrefs";
     private static final String DOCK_KEY = "DockPackages";
-    private static final String GRID_KEY = "GridPackages";
-    
+
     private int columns = 5;
-    private int rows = 6; 
+    private int rows = 6;
     private static final int DOCK_COUNT = 5;
     private static final int HOTSEAT_HEIGHT_DP = 90;
 
-    private List<String> dockApps = new ArrayList<>();
-    private List<String> gridApps = new ArrayList<>();
-    private boolean isDraggingSystemApp = false;
+    private List<AppModel> dockModels = new ArrayList<>();
+    private List<AppModel> gridModels = new ArrayList<>();
+    private final Map<String, AppModel> appCache = new HashMap<>();
+
+    private GridPagerAdapter gridAdapter;
+    private boolean isRefreshing = false;
+
+    private float appTextSizeSp = 13f;
+    private float dockTextSizeSp = 12f;
+
+    private final BroadcastReceiver packageReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            appCache.clear();
+            refreshUI();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
-        
+
         viewPager = findViewById(R.id.view_pager);
         pageIndicator = findViewById(R.id.page_indicator);
         hotseat = findViewById(R.id.hotseat);
-        deleteZone = findViewById(R.id.delete_zone);
-        
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.drag_layer), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            calculateOptimalRows(systemBars.top, systemBars.bottom);
-            refreshUI();
-            return insets;
+
+        findViewById(R.id.search_bar_container).setOnClickListener(v -> {
+            Intent intent = new Intent(this, SearchActivity.class);
+            startActivity(intent);
         });
 
-        hotseat.setOnDragListener(new AppDragListener());
-        findViewById(R.id.drag_layer).setOnDragListener(new AppDragListener());
+        viewPager.setPageTransformer((page, position) -> {
+            page.setTranslationX(-position * page.getWidth());
+            page.setTranslationZ(1f - Math.abs(position));
+            if (position <= -0.7f || position >= 0.7f) {
+                page.setVisibility(View.INVISIBLE);
+            } else {
+                page.setVisibility(View.VISIBLE);
+                page.setAlpha(1f);
+            }
+        });
+
+        View child = viewPager.getChildAt(0);
+        if (child instanceof RecyclerView) {
+            child.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            ((RecyclerView) child).setItemViewCacheSize(20);
+        }
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addDataScheme("package");
+        registerReceiver(packageReceiver, filter);
+
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.drag_layer), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, 0);
+            
+            View bottomContainer = findViewById(R.id.bottom_container);
+            if (bottomContainer != null) {
+                bottomContainer.setPadding(0, 0, 0, systemBars.bottom);
+            }
+            
+            calculateOptimalRows(systemBars.top, systemBars.bottom);
+            v.post(this::refreshUI);
+            return insets;
+        });
     }
 
-    private void refreshUI() {
-        loadData();
-        renderDock();
-        renderGridPages();
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (Intent.ACTION_MAIN.equals(intent.getAction()) && intent.hasCategory(Intent.CATEGORY_HOME)) {
+            if (viewPager != null) {
+                viewPager.setCurrentItem(0, true);
+            }
+        }
     }
 
-    private void renderGridPages() {
-        int pageSize = columns * rows;
-        int pageCount = (int) Math.ceil((double) gridApps.size() / pageSize);
-        if (pageCount == 0) pageCount = 1;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(packageReceiver);
+    }
 
-        GridPagerAdapter adapter = new GridPagerAdapter(pageCount);
-        viewPager.setAdapter(adapter);
+    private synchronized void refreshUI() {
+        if (isRefreshing) return;
+        isRefreshing = true;
         
-        new TabLayoutMediator(pageIndicator, viewPager, (tab, position) -> {}).attach();
+        int currentPage = viewPager.getCurrentItem();
+        
+        loadAllData();
+        renderDock();
+
+        int pageSize = columns * rows;
+        if (pageSize <= 0) pageSize = 30;
+        int gridPageCount = Math.max(1, (int) Math.ceil((double) gridModels.size() / pageSize));
+        int totalPageCount = 1 + gridPageCount;
+        
+        if (gridAdapter == null) {
+            gridAdapter = new GridPagerAdapter(totalPageCount);
+            viewPager.setAdapter(gridAdapter);
+            new TabLayoutMediator(pageIndicator, viewPager, (tab, position) -> {
+                if (position == 0) {
+                    tab.setIcon(ContextCompat.getDrawable(this, R.drawable.ic_home_unselected));
+                } else {
+                    tab.setIcon(ContextCompat.getDrawable(this, R.drawable.page_indicator_dot));
+                }
+            }).attach();
+
+            pageIndicator.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+                @Override
+                public void onTabSelected(TabLayout.Tab tab) {
+                    if (tab.getPosition() == 0) {
+                        tab.setIcon(ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_home_selected));
+                    }
+                }
+                @Override
+                public void onTabUnselected(TabLayout.Tab tab) {
+                    if (tab.getPosition() == 0) {
+                        tab.setIcon(ContextCompat.getDrawable(MainActivity.this, R.drawable.ic_home_unselected));
+                    }
+                }
+                @Override
+                public void onTabReselected(TabLayout.Tab tab) {}
+            });
+        } else {
+            gridAdapter.setPageCount(totalPageCount);
+            gridAdapter.notifyDataSetChanged();
+        }
+        
+        TabLayout.Tab firstTab = pageIndicator.getTabAt(0);
+        if (firstTab != null) {
+            if (viewPager.getCurrentItem() == 0) {
+                firstTab.setIcon(ContextCompat.getDrawable(this, R.drawable.ic_home_selected));
+            } else {
+                firstTab.setIcon(ContextCompat.getDrawable(this, R.drawable.ic_home_unselected));
+            }
+        }
+
+        if (currentPage < totalPageCount) {
+            viewPager.setCurrentItem(currentPage, false);
+        } else {
+            viewPager.setCurrentItem(totalPageCount - 1, false);
+        }
+        
+        viewPager.setOffscreenPageLimit(totalPageCount);
+        isRefreshing = false;
     }
 
-    private class GridPagerAdapter extends RecyclerView.Adapter<GridPagerAdapter.ViewHolder> {
-        private final int pageCount;
+    private void loadAllData() {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        PackageManager pm = getPackageManager();
+        Intent intent = new Intent(Intent.ACTION_MAIN, null);
+        intent.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> installedApps = pm.queryIntentActivities(intent, 0);
+        Map<String, ResolveInfo> installedMap = new HashMap<>();
+        for (ResolveInfo ri : installedApps) installedMap.put(ri.activityInfo.packageName, ri);
 
+        String dockStr = prefs.getString(DOCK_KEY, "");
+        String[] savedDock = dockStr.isEmpty() ? new String[0] : dockStr.split("\\|", -1);
+        dockModels.clear();
+        for (int i = 0; i < DOCK_COUNT; i++) {
+            String pkg = i < savedDock.length ? savedDock[i] : "null";
+            dockModels.add(getOrLoadModel(pkg, installedMap));
+        }
+
+        gridModels.clear();
+        for (ResolveInfo ri : installedApps) {
+            String pkg = ri.activityInfo.packageName;
+            if (!isPkgInDock(pkg)) {
+                gridModels.add(getOrLoadModel(pkg, installedMap));
+            }
+        }
+
+        final Collator collator = Collator.getInstance(Locale.CHINA);
+        final AlphabeticIndex.ImmutableIndex<String> index;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            index = new AlphabeticIndex<String>(Locale.CHINA)
+                    .addLabels(Locale.ENGLISH)
+                    .buildImmutableIndex();
+        } else {
+            index = null;
+        }
+
+        Collections.sort(gridModels, (a, b) -> {
+            if (a.isNull && b.isNull) return 0;
+            if (a.isNull) return 1;
+            if (b.isNull) return -1;
+            String s1 = a.label != null ? a.label.toString() : "";
+            String s2 = b.label != null ? b.label.toString() : "";
+            if (index != null) {
+                int b1 = index.getBucketIndex(s1);
+                int b2 = index.getBucketIndex(s2);
+                if (b1 != b2) return Integer.compare(b1, b2);
+            }
+            return collator.compare(s1, s2);
+        });
+
+        int pageSize = columns * rows;
+        if (pageSize <= 0) pageSize = 30;
+        while (gridModels.size() % pageSize != 0 || gridModels.isEmpty()) {
+            gridModels.add(AppModel.createNull());
+        }
+    }
+
+    private AppModel getOrLoadModel(String pkg, Map<String, ResolveInfo> installedMap) {
+        if (pkg.equals("null")) return AppModel.createNull();
+        if (appCache.containsKey(pkg)) return appCache.get(pkg);
+
+        AppModel model = new AppModel();
+        model.pkg = pkg;
+        ResolveInfo ri = installedMap.get(pkg);
+        if (ri != null) {
+            PackageManager pm = getPackageManager();
+            model.label = ri.loadLabel(pm);
+            
+            String resName = pkg.replace(".", "_").toLowerCase();
+            int resId = getResources().getIdentifier(resName, "drawable", getPackageName());
+            
+            if (resId != 0) {
+                try {
+                    model.icon = ResourcesCompat.getDrawable(getResources(), resId, null);
+                } catch (Exception e) {
+                    model.icon = ri.loadIcon(pm);
+                }
+            } else {
+                model.icon = ri.loadIcon(pm);
+            }
+            
+            if (model.icon == null) {
+                model.icon = pm.getDefaultActivityIcon();
+            }
+        } else {
+            return AppModel.createNull();
+        }
+        appCache.put(pkg, model);
+        return model;
+    }
+
+    private boolean isPkgInDock(String pkg) {
+        for (AppModel m : dockModels) if (pkg.equals(m.pkg)) return true;
+        return false;
+    }
+
+    private void renderDock() {
+        hotseat.setGridSize(DOCK_COUNT, 1);
+        hotseat.removeAllViews();
+        for (int i = 0; i < dockModels.size(); i++) {
+            hotseat.addView(createIconView(dockModels.get(i), true, i));
+        }
+    }
+
+    private class GridPagerAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+        private static final int TYPE_HOME = 0;
+        private static final int TYPE_GRID = 1;
+        private int pageCount;
+        
         GridPagerAdapter(int count) { this.pageCount = count; }
+        void setPageCount(int count) { this.pageCount = count; }
+
+        @Override
+        public int getItemViewType(int position) {
+            return position == 0 ? TYPE_HOME : TYPE_GRID;
+        }
 
         @NonNull
         @Override
-        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            GridLayout grid = new GridLayout(MainActivity.this);
-            grid.setColumnCount(columns);
-            grid.setRowCount(rows);
-            grid.setLayoutParams(new ViewGroup.LayoutParams(-1, -1));
-            grid.setOnDragListener(new AppDragListener());
-            return new ViewHolder(grid);
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            if (viewType == TYPE_HOME) {
+                View v = LayoutInflater.from(MainActivity.this).inflate(R.layout.item_home_page, parent, false);
+                return new HomeViewHolder(v);
+            } else {
+                CellLayout cellLayout = new CellLayout(MainActivity.this);
+                cellLayout.setLayoutParams(new ViewGroup.LayoutParams(-1, -1));
+                cellLayout.setBackgroundColor(Color.WHITE);
+                return new GridViewHolder(cellLayout);
+            }
         }
 
         @Override
-        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            GridLayout grid = (GridLayout) holder.itemView;
-            grid.removeAllViews();
-            grid.setTag(position); // 记录页码
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            if (holder instanceof GridViewHolder) {
+                int gridPosition = position - 1;
+                GridViewHolder gridHolder = (GridViewHolder) holder;
+                CellLayout cellLayout = (CellLayout) gridHolder.itemView;
+                cellLayout.setGridSize(columns, rows);
+                cellLayout.setTag(gridPosition);
+                cellLayout.removeAllViews();
 
-            int pageSize = columns * rows;
-            int start = position * pageSize;
-            for (int i = 0; i < pageSize; i++) {
-                int dataIdx = start + i;
-                String pkg = (dataIdx < gridApps.size()) ? gridApps.get(dataIdx) : "null";
-                View iconView = createIconView(pkg, false, dataIdx);
-                
-                GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-                lp.width = 0; lp.height = 0;
-                lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-                lp.rowSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-                iconView.setLayoutParams(lp);
-                grid.addView(iconView);
+                int pageSize = columns * rows;
+                if (pageSize <= 0) pageSize = 30;
+                int start = gridPosition * pageSize;
+                for (int i = 0; i < pageSize; i++) {
+                    int dataIdx = start + i;
+                    AppModel model = dataIdx < gridModels.size() ? gridModels.get(dataIdx) : AppModel.createNull();
+                    cellLayout.addView(createIconView(model, false, dataIdx));
+                }
             }
         }
 
         @Override
         public int getItemCount() { return pageCount; }
-
-        class ViewHolder extends RecyclerView.ViewHolder {
-            ViewHolder(View v) { super(v); }
-        }
+        
+        class HomeViewHolder extends RecyclerView.ViewHolder { HomeViewHolder(View v) { super(v); } }
+        class GridViewHolder extends RecyclerView.ViewHolder { GridViewHolder(View v) { super(v); } }
     }
 
-    private void loadData() {
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String dockStr = prefs.getString(DOCK_KEY, "");
-        String[] savedDock = dockStr.isEmpty() ? new String[0] : dockStr.split("\\|", -1);
-        dockApps.clear();
-        for (int i = 0; i < DOCK_COUNT; i++) dockApps.add((i < savedDock.length) ? savedDock[i] : "null");
+    private View createIconView(AppModel model, boolean isDock, int index) {
+        View view = LayoutInflater.from(this).inflate(isDock ? R.layout.item_dock_slot : R.layout.item_app_icon, null);
+        AppIconView iconView = view.findViewById(isDock ? R.id.dock_slot_icon : R.id.app_icon);
+        TextView labelView = view.findViewById(isDock ? R.id.dock_slot_label : R.id.app_label);
+        labelView.setTextSize(TypedValue.COMPLEX_UNIT_SP, isDock ? dockTextSizeSp : appTextSizeSp);
+        iconView.setForceShowMask(isDock);
 
-        if (!prefs.contains(GRID_KEY)) {
-            initializeGridWithInstalledApps();
+        if (!model.isNull) {
+            iconView.setImageDrawable(model.icon);
+            labelView.setText(model.label);
+            view.setOnClickListener(v -> {
+                Intent i = getPackageManager().getLaunchIntentForPackage(model.pkg);
+                if (i != null) startActivity(i);
+            });
         } else {
-            String gridStr = prefs.getString(GRID_KEY, "");
-            String[] savedGrid = gridStr.isEmpty() ? new String[0] : gridStr.split("\\|", -1);
-            gridApps.clear();
-            for (String s : savedGrid) gridApps.add(s);
-            reconcileApps();
+            iconView.setImageDrawable(null);
+            labelView.setText("");
+            if (isDock) {
+                view.setClickable(true);
+            } else {
+                view.setClickable(false);
+            }
         }
+
+        if (isDock) {
+            view.setOnLongClickListener(v -> {
+                showAppPickerForDock(index);
+                return true;
+            });
+        }
+
+        if (!model.isNull || isDock) {
+            view.setOnTouchListener((v, event) -> {
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                    iconView.setPressed(true);
+                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                    iconView.setPressed(false);
+                }
+                return false;
+            });
+        }
+
+        return view;
     }
 
-    private void reconcileApps() {
+    private void showAppPickerForDock(int index) {
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_app_picker, null);
+        // 为对话框根视图设置 3dp 描边和 2dp 圆角背景
+        dialogView.setBackgroundResource(R.drawable.dialog_background);
+        
+        EditText searchInput = dialogView.findViewById(R.id.picker_search);
+        RecyclerView recyclerView = dialogView.findViewById(R.id.picker_list);
+
         PackageManager pm = getPackageManager();
         Intent intent = new Intent(Intent.ACTION_MAIN, null);
         intent.addCategory(Intent.CATEGORY_LAUNCHER);
         List<ResolveInfo> installedApps = pm.queryIntentActivities(intent, 0);
-        List<String> installedPkgs = new ArrayList<>();
-        for (ResolveInfo ri : installedApps) installedPkgs.add(ri.activityInfo.packageName);
+        Collections.sort(installedApps, new ResolveInfo.DisplayNameComparator(pm));
 
-        boolean changed = false;
-        for (int i = 0; i < dockApps.size(); i++) {
-            if (!dockApps.get(i).equals("null") && !installedPkgs.contains(dockApps.get(i))) {
-                dockApps.set(i, "null"); changed = true;
-            }
+        List<PickerItem> allItems = new ArrayList<>();
+        allItems.add(new PickerItem("清除此位置", "null", ContextCompat.getDrawable(this, R.drawable.ic_menu_delete)));
+        for (ResolveInfo ri : installedApps) {
+            allItems.add(new PickerItem(ri.loadLabel(pm).toString(), ri.activityInfo.packageName, ri.loadIcon(pm)));
         }
-        for (int i = 0; i < gridApps.size(); i++) {
-            if (!gridApps.get(i).equals("null") && !installedPkgs.contains(gridApps.get(i))) {
-                gridApps.set(i, "null"); changed = true;
-            }
-        }
-        for (String pkg : installedPkgs) {
-            if (!dockApps.contains(pkg) && !gridApps.contains(pkg)) {
-                int nullIdx = gridApps.indexOf("null");
-                if (nullIdx != -1) gridApps.set(nullIdx, pkg);
-                else gridApps.add(pkg);
-                changed = true;
-            }
-        }
-        // 补齐最后一页空位
-        int pageSize = columns * rows;
-        while (gridApps.size() % pageSize != 0 || gridApps.isEmpty()) gridApps.add("null");
 
-        if (changed) saveData();
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.EInkDialog)
+                .setView(dialogView)
+                .create();
+
+        PickerAdapter adapter = new PickerAdapter(allItems, pkg -> {
+            updateDockSlot(index, pkg);
+            dialog.dismiss();
+        });
+        
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setAdapter(adapter);
+
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                adapter.filter(s.toString());
+            }
+            @Override public void afterTextChanged(Editable s) {}
+        });
+
+        dialog.show();
+        
+        // 取消阴影并调整窗口
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setDimAmount(0f); // 取消背景变暗/阴影
+        }
     }
 
-    private class AppDragListener implements View.OnDragListener {
+    static class PickerItem {
+        String label;
+        String pkg;
+        Drawable icon;
+        PickerItem(String label, String pkg, Drawable icon) {
+            this.label = label;
+            this.pkg = pkg;
+            this.icon = icon;
+        }
+    }
+
+    private class PickerAdapter extends RecyclerView.Adapter<PickerAdapter.ViewHolder> {
+        private List<PickerItem> allItems;
+        private List<PickerItem> filteredItems;
+        private java.util.function.Consumer<String> onItemClick;
+
+        PickerAdapter(List<PickerItem> items, java.util.function.Consumer<String> callback) {
+            this.allItems = items;
+            this.filteredItems = new ArrayList<>(items);
+            this.onItemClick = callback;
+        }
+
+        void filter(String query) {
+            filteredItems.clear();
+            if (query.isEmpty()) {
+                filteredItems.addAll(allItems);
+            } else {
+                String lowerQuery = query.toLowerCase();
+                for (PickerItem item : allItems) {
+                    if (item.label.toLowerCase().contains(lowerQuery)) {
+                        filteredItems.add(item);
+                    }
+                }
+            }
+            notifyDataSetChanged();
+        }
+
+        @NonNull
         @Override
-        public boolean onDrag(View v, DragEvent event) {
-            float touchY = event.getY();
-            int[] viewLoc = new int[2]; v.getLocationOnScreen(viewLoc);
-            float screenY = viewLoc[1] + touchY;
-            float threshold = 180 * getResources().getDisplayMetrics().density;
+        public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_picker_app, parent, false);
+            return new ViewHolder(v);
+        }
 
-            switch (event.getAction()) {
-                case DragEvent.ACTION_DRAG_LOCATION:
-                    if (screenY < threshold && !isDraggingSystemApp) {
-                        deleteZone.setVisibility(View.VISIBLE);
-                    } else {
-                        deleteZone.setVisibility(View.GONE);
-                    }
-                    deleteZone.getParent().requestLayout();
-                    break;
-                case DragEvent.ACTION_DROP:
-                    String data = event.getClipData().getItemAt(0).getText().toString();
-                    String[] parts = data.split(":");
-                    String pkg = parts[0];
-                    String fromType = parts[1];
-                    int fromIdx = Integer.parseInt(parts[2]);
+        @Override
+        public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
+            PickerItem item = filteredItems.get(position);
+            holder.label.setText(item.label);
+            holder.icon.setImageDrawable(item.icon);
+            holder.icon.setForceShowMask(true);
+            holder.itemView.setOnClickListener(v -> {
+                if (onItemClick != null) {
+                    onItemClick.accept(item.pkg);
+                }
+            });
+        }
 
-                    if (screenY < threshold && !isDraggingSystemApp) {
-                        initiateUninstall(pkg);
-                    } else if (v == hotseat) {
-                        int toIdx = (int) (event.getX() / (hotseat.getWidth() / DOCK_COUNT));
-                        handleMove(pkg, fromType, fromIdx, "dock", toIdx);
-                    } else if (v instanceof GridLayout) {
-                        int page = (int) v.getTag();
-                        int col = (int) (event.getX() / (v.getWidth() / columns));
-                        int row = (int) (event.getY() / (v.getHeight() / rows));
-                        int toIdx = page * (columns * rows) + (row * columns + col);
-                        handleMove(pkg, fromType, fromIdx, "grid", toIdx);
-                    }
-                    break;
-                case DragEvent.ACTION_DRAG_ENDED:
-                    deleteZone.setVisibility(View.GONE);
-                    deleteZone.getParent().requestLayout();
-                    refreshUI();
-                    break;
+        @Override
+        public int getItemCount() { return filteredItems.size(); }
+
+        class ViewHolder extends RecyclerView.ViewHolder {
+            AppIconView icon;
+            TextView label;
+            ViewHolder(View v) {
+                super(v);
+                icon = v.findViewById(R.id.picker_app_icon);
+                label = v.findViewById(R.id.picker_app_label);
             }
-            return true;
         }
     }
 
-    // --- 保持原有的 createIconView, startDragging, handleMove, saveData 等逻辑并进行微调 ---
-    private View createIconView(String pkg, boolean isDock, int index) {
-        View view = LayoutInflater.from(this).inflate(isDock ? R.layout.item_dock_slot : R.layout.item_app_icon, null);
-        ImageView iconView = view.findViewById(isDock ? R.id.dock_slot_icon : R.id.app_icon);
-        TextView labelView = view.findViewById(isDock ? R.id.dock_slot_label : R.id.app_label);
-        if (pkg != null && !pkg.equals("null")) {
-            final String finalPkg = pkg;
-            try {
-                PackageManager pm = getPackageManager();
-                iconView.setImageDrawable(pm.getApplicationIcon(finalPkg));
-                labelView.setText(pm.getApplicationLabel(pm.getApplicationInfo(finalPkg, 0)));
-                view.setOnClickListener(v -> {
-                    Intent i = pm.getLaunchIntentForPackage(finalPkg);
-                    if (i != null) startActivity(i);
-                });
-                view.setOnLongClickListener(v -> {
-                    isDraggingSystemApp = isSystemApp(finalPkg);
-                    ClipData cd = ClipData.newPlainText("app_info", finalPkg + ":" + (isDock ? "dock" : "grid") + ":" + index);
-                    v.startDragAndDrop(cd, new View.DragShadowBuilder(v), null, 0);
-                    v.setVisibility(View.INVISIBLE);
-                    return true;
-                });
-            } catch (Exception e) { pkg = "null"; }
+    private void updateDockSlot(int index, String pkg) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        String dockStr = prefs.getString(DOCK_KEY, "");
+        String[] savedDock = new String[DOCK_COUNT];
+        java.util.Arrays.fill(savedDock, "null");
+        
+        if (!dockStr.isEmpty()) {
+            String[] split = dockStr.split("\\|", -1);
+            for (int i = 0; i < Math.min(split.length, DOCK_COUNT); i++) {
+                savedDock[i] = split[i];
+            }
         }
-        if (pkg == null || pkg.equals("null")) {
-            iconView.setImageResource(isDock ? android.R.drawable.ic_menu_add : android.R.color.transparent);
-            iconView.setAlpha(isDock ? 0.2f : 0.0f);
-            labelView.setText("");
+
+        savedDock[index] = pkg;
+        
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < DOCK_COUNT; i++) {
+            sb.append(savedDock[i]);
+            if (i < DOCK_COUNT - 1) sb.append("|");
         }
-        return view;
-    }
-
-    private boolean isSystemApp(String pkg) {
-        try { return (getPackageManager().getApplicationInfo(pkg, 0).flags & ApplicationInfo.FLAG_SYSTEM) != 0; }
-        catch (Exception e) { return false; }
-    }
-
-    private void handleMove(String pkg, String fromType, int fromIdx, String toType, int toIdx) {
-        String target = toType.equals("dock") ? dockApps.get(toIdx) : gridApps.get(toIdx);
-        if (target != null && !target.equals("null")) return;
-        if (fromType.equals("dock")) dockApps.set(fromIdx, "null"); else gridApps.set(fromIdx, "null");
-        if (toType.equals("dock")) dockApps.set(toIdx, pkg); else gridApps.set(toIdx, pkg);
-        saveData(); refreshUI();
-    }
-
-    private void saveData() {
-        SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-        StringBuilder ds = new StringBuilder();
-        for (int i = 0; i < dockApps.size(); i++) ds.append(dockApps.get(i)).append(i == 4 ? "" : "|");
-        editor.putString(DOCK_KEY, ds.toString());
-        StringBuilder gs = new StringBuilder();
-        for (int i = 0; i < gridApps.size(); i++) gs.append(gridApps.get(i)).append(i == gridApps.size() - 1 ? "" : "|");
-        editor.putString(GRID_KEY, gs.toString());
-        editor.apply();
-    }
-
-    private void initializeGridWithInstalledApps() {
-        PackageManager pm = getPackageManager();
-        Intent intent = new Intent(Intent.ACTION_MAIN, null);
-        intent.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> apps = pm.queryIntentActivities(intent, 0);
-        gridApps.clear();
-        for (ResolveInfo app : apps) gridApps.add(app.activityInfo.packageName);
-        int pageSize = columns * rows;
-        while (gridApps.size() % pageSize != 0 || gridApps.isEmpty()) gridApps.add("null");
-        saveData();
+        prefs.edit().putString(DOCK_KEY, sb.toString()).apply();
+        
+        appCache.clear();
+        refreshUI();
     }
 
     private void calculateOptimalRows(int topInset, int bottomInset) {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int availableHeightPx = metrics.heightPixels - topInset - bottomInset - (int)(HOTSEAT_HEIGHT_DP * metrics.density) - (int)(30 * metrics.density);
+        int availableHeightPx = metrics.heightPixels - topInset - bottomInset - 140 * (int)metrics.density - 30 * (int)metrics.density;
         rows = Math.max(4, availableHeightPx / (int)(105 * metrics.density));
-    }
-
-    private void initiateUninstall(String pkg) {
-        try { startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg))); } catch (Exception e) {}
-    }
-
-    private void renderDock() {
-        hotseat.removeAllViews();
-        for (int i = 0; i < DOCK_COUNT; i++) {
-            View slot = createIconView(dockApps.get(i), true, i);
-            hotseat.addView(slot, new LinearLayout.LayoutParams(0, -1, 1.0f));
-        }
+        float baseSize = (metrics.density >= 2.0f) ? 13f : 14f; 
+        appTextSizeSp = Math.max(10f, baseSize - (rows > 6 ? 1f : 0f));
+        dockTextSizeSp = Math.max(9f, appTextSizeSp - 1f);
     }
 }

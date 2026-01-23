@@ -6,20 +6,21 @@
     android:orientation="vertical"
     android:gravity="center"
     android:padding="4dp"
-    android:background="?attr/selectableItemBackground">
+    android:background="@drawable/item_selector">
 
-    <com.google.android.material.imageview.ShapeableImageView
+    <com.fxdaily.einkhome.AppIconView
         android:id="@+id/dock_slot_icon"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:scaleType="centerCrop"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:contentDescription="Dock Slot Icon"
-        app:shapeAppearanceOverlay="@style/CircleShapeAppearance" />
+        android:padding="2dp"
+        android:scaleType="centerCrop" />
 
     <TextView
         android:id="@+id/dock_slot_label"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:visibility="gone"
         android:textSize="10sp"
         android:textColor="#333333"
         android:gravity="center"
