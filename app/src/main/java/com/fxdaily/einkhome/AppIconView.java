@@ -14,6 +14,7 @@ public class AppIconView extends androidx.appcompat.widget.AppCompatImageView {
     private Path clipPath;
     private float borderWidth;
     private boolean forceShowMask = false;
+    private boolean grayscale = true;
 
     public AppIconView(Context context) {
         super(context);
@@ -31,7 +32,7 @@ public class AppIconView extends androidx.appcompat.widget.AppCompatImageView {
     }
 
     private void init() {
-        borderWidth = getResources().getDisplayMetrics().density * 2; // 2dp 描边
+        borderWidth = getResources().getDisplayMetrics().density * 1.5f; // 调整为 1.5dp 描边
 
         bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         bgPaint.setColor(0xFFFFFFFF); // 白色背景
@@ -43,12 +44,23 @@ public class AppIconView extends androidx.appcompat.widget.AppCompatImageView {
         borderPaint.setStrokeWidth(borderWidth);
 
         clipPath = new Path();
+        updateColorFilter();
+    }
 
-        // 创建置灰（黑白）颜色矩阵
-        ColorMatrix matrix = new ColorMatrix();
-        matrix.setSaturation(0); // 设置饱和度为 0 即可实现置灰
-        ColorMatrixColorFilter filter = new ColorMatrixColorFilter(matrix);
-        setColorFilter(filter);
+    public void setGrayscale(boolean grayscale) {
+        this.grayscale = grayscale;
+        updateColorFilter();
+        invalidate();
+    }
+
+    private void updateColorFilter() {
+        if (grayscale) {
+            ColorMatrix matrix = new ColorMatrix();
+            matrix.setSaturation(0);
+            setColorFilter(new ColorMatrixColorFilter(matrix));
+        } else {
+            clearColorFilter();
+        }
     }
 
     public void setForceShowMask(boolean force) {

@@ -7,16 +7,16 @@
     android:padding="12dp"
     android:background="?attr/selectableItemBackground">
 
-    <com.fxdaily.einkhome.AppIconView
-        android:id="@+id/picker_app_icon"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:scaleType="centerCrop" />
+    <ImageView
+        android:id="@+id/option_icon"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="8dp"
+        android:tint="#000000" />
 
     <TextView
-        android:id="@+id/picker_app_label"
-        android:layout_width="0dp"
-        android:layout_weight="1"
+        android:id="@+id/option_text"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:textColor="#000000"

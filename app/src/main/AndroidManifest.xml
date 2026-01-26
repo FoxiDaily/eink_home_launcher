@@ -46,6 +46,11 @@
             android:exported="false"
             android:windowSoftInputMode="stateVisible" />
 
+        <activity
+            android:name=".LauncherSettings"
+            android:exported="false"
+            android:label="桌面设置" />
+
     </application>
 
 </manifest>
