@@ -4,7 +4,7 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-01-26T07:23:39.385889799Z">
+        <DropdownSelection timestamp="2026-01-26T08:25:56.616839864Z">
           <Target type="DEFAULT_BOOT">
             <handle>
               <DeviceId pluginId="LocalEmulator" identifier="path=/home/fxdaily/.android/avd/Eink.avd" />

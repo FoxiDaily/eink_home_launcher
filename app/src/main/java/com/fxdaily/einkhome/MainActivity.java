@@ -120,11 +120,13 @@ public class MainActivity extends AppCompatActivity {
 
         viewPager.setPageTransformer((page, position) -> {
             page.setTranslationX(-position * page.getWidth());
-            page.setTranslationZ(1f - Math.abs(position));
-            if (position < -1 || position > 1) {
+            if (position <= -1 || position >= 1) {
                 page.setAlpha(0f);
+                page.setVisibility(View.INVISIBLE);
             } else {
+                page.setVisibility(View.VISIBLE);
                 page.setAlpha(1f);
+                page.setTranslationZ(1f - Math.abs(position));
             }
         });
 
@@ -365,7 +367,9 @@ public class MainActivity extends AppCompatActivity {
             return new GridViewHolder(cl);
         }
         @Override public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            if (holder instanceof GridViewHolder) {
+            if (holder instanceof HomeViewHolder) {
+                holder.itemView.setOnLongClickListener(v -> true);
+            } else if (holder instanceof GridViewHolder) {
                 int gridPosition = position - 1;
                 CellLayout cl = (CellLayout) holder.itemView;
                 cl.setGridSize(columns, rows);
